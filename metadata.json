@@ -1,0 +1,8 @@
+{
+  "name": "Bookverse",
+  "description": "An elegant book shelving, tracking, and exploration companion integrating with the Google Books API and Gemini AI recommendations.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
