@@ -1,3 +1,4 @@
+npm install vite-plugin-pwa --save-dev
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
