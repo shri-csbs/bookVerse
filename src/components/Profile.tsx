@@ -29,6 +29,16 @@ interface ProfileProps {
   onClearLibrary: () => void;
   onResetLibrary: () => void;
   onImportLibrary: (importedBooks: SavedBook[]) => void;
+  
+  // Spring Boot Live Sync additions
+  backendMode: 'local' | 'spring';
+  setBackendMode: (mode: 'local' | 'spring') => void;
+  backendUrl: string;
+  setBackendUrl: (url: string) => void;
+  connectionStatus: 'connected' | 'error' | 'connecting' | 'idle';
+  onSyncLocalToBackend: () => Promise<{ success: boolean; message: string }>;
+  onSyncBackendToLocal: () => Promise<{ success: boolean; message: string }>;
+  onTestConnection: (url: string) => Promise<boolean>;
 }
 
 const PREDEFINED_AVATARS = [
@@ -103,7 +113,15 @@ export default function Profile({
   onUpdateProfile,
   onClearLibrary,
   onResetLibrary,
-  onImportLibrary
+  onImportLibrary,
+  backendMode,
+  setBackendMode,
+  backendUrl,
+  setBackendUrl,
+  connectionStatus,
+  onSyncLocalToBackend,
+  onSyncBackendToLocal,
+  onTestConnection
 }: ProfileProps) {
   // Navigation inside the Profile component (Dashboard vs Settings)
   const [profileSubTab, setProfileSubTab] = useState<'analytics' | 'settings'>('analytics');
@@ -121,6 +139,7 @@ export default function Profile({
   const [registerGoal, setRegisterGoal] = useState(12);
   const [loginError, setLoginError] = useState('');
   const [registerError, setRegisterError] = useState('');
+  const [syncFeedback, setSyncFeedback] = useState<{ type: 'success' | 'error', text: string } | null>(null);
 
   // OAuth Simulated Handshake
   const [isOAuthLoading, setIsOAuthLoading] = useState(false);
@@ -1072,6 +1091,155 @@ export default function Profile({
 
             {/* Right side: Database, Export, and Session Control Panel */}
             <div className="space-y-6">
+              {/* Spring Boot Server Sync Settings */}
+              <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-xs space-y-5 transition-colors duration-300">
+                <div className="flex items-center justify-between pb-2 border-b border-gray-50 dark:border-slate-800">
+                  <div className="flex items-center space-x-2">
+                    <Database className={`h-4.5 w-4.5 ${backendMode === 'spring' ? 'text-emerald-500' : 'text-gray-400'}`} />
+                    <span className="text-2xs font-extrabold text-gray-900 dark:text-slate-200 uppercase tracking-widest">Spring Boot Sync</span>
+                  </div>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-3xs font-mono font-bold ${
+                    backendMode === 'spring'
+                      ? connectionStatus === 'connected'
+                        ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400'
+                        : connectionStatus === 'connecting'
+                          ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400'
+                          : 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400'
+                      : 'bg-gray-50 dark:bg-slate-800 text-gray-500 dark:text-slate-400'
+                  }`}>
+                    {backendMode === 'spring'
+                      ? connectionStatus === 'connected' ? 'LIVE' : connectionStatus === 'connecting' ? 'SYNCING' : 'OFFLINE'
+                      : 'SANDBOX'}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <p className="text-3xs text-gray-400 dark:text-gray-500 leading-normal">
+                    Connect your Bookverse frontend to your live Spring Boot REST API on Render (<code className="bg-gray-100 dark:bg-slate-950 px-1 py-0.5 rounded text-3xs text-emerald-600 dark:text-emerald-400">https://bookverse-8t9g.onrender.com</code>).
+                  </p>
+
+                  {/* Mode Select Toggle */}
+                  <div className="space-y-1.5">
+                    <label className="text-4xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block">Storage Mode</label>
+                    <div className="grid grid-cols-2 gap-2 bg-gray-50 dark:bg-slate-950 p-1 rounded-xl border border-gray-100 dark:border-slate-850">
+                      <button
+                        type="button"
+                        onClick={() => setBackendMode('local')}
+                        className={`py-1.5 rounded-lg text-3xs font-bold cursor-pointer transition-all ${
+                          backendMode === 'local'
+                            ? 'bg-white dark:bg-slate-900 text-gray-900 dark:text-white shadow-3xs'
+                            : 'text-gray-400 dark:text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        Local Sandbox
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setBackendMode('spring')}
+                        className={`py-1.5 rounded-lg text-3xs font-bold cursor-pointer transition-all ${
+                          backendMode === 'spring'
+                            ? 'bg-emerald-600 text-white shadow-3xs'
+                            : 'text-gray-400 dark:text-gray-500 hover:text-gray-700'
+                        }`}
+                      >
+                        Live Spring Boot
+                      </button>
+                    </div>
+                  </div>
+
+                  {backendMode === 'spring' && (
+                    <div className="space-y-4 animate-fade-in">
+                      {/* URL Config */}
+                      <div className="space-y-1.5">
+                        <label className="text-4xs font-bold text-gray-400 dark:text-gray-500 uppercase tracking-wider block">Backend Server API Base URL</label>
+                        <div className="flex space-x-2">
+                          <input
+                            type="text"
+                            value={backendUrl}
+                            onChange={(e) => setBackendUrl(e.target.value)}
+                            className="flex-1 px-3 py-1.5 bg-gray-50 dark:bg-slate-950 border border-gray-100 dark:border-slate-800 rounded-xl text-3xs font-mono text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500 focus:border-emerald-500"
+                            placeholder="https://example-backend.render.com"
+                          />
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const ok = await onTestConnection(backendUrl);
+                              setSyncFeedback({
+                                type: ok ? 'success' : 'error',
+                                text: ok 
+                                  ? '🟢 Ping successful! Spring Boot API is online and responding.' 
+                                  : '🔴 Connection timeout! Server did not respond. (Render cold-starts can take up to 50 seconds. Please retry in a bit.)'
+                              });
+                            }}
+                            className="px-3 py-1.5 bg-gray-150 hover:bg-gray-200 dark:bg-slate-850 dark:hover:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl text-3xs font-bold transition-all cursor-pointer shrink-0"
+                          >
+                            Ping
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Connection status card */}
+                      {syncFeedback && (
+                        <div className={`p-3 border rounded-xl text-3xs font-medium leading-normal flex items-start space-x-2 ${
+                          syncFeedback.type === 'success'
+                            ? 'bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+                            : 'bg-red-50/60 dark:bg-red-950/20 text-red-600 dark:text-red-400 border-red-500/20'
+                        }`}>
+                          <div className="mt-0.5 shrink-0">
+                            {syncFeedback.type === 'success' ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
+                          </div>
+                          <span>{syncFeedback.text}</span>
+                        </div>
+                      )}
+
+                      {/* Connection Instructions / Status Tip */}
+                      {connectionStatus === 'error' && !syncFeedback && (
+                        <div className="p-3 bg-amber-50/60 dark:bg-amber-950/10 border border-amber-500/15 rounded-xl text-3xs text-amber-700 dark:text-amber-400 leading-normal flex items-start space-x-2">
+                          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0 text-amber-500" />
+                          <span>
+                            <strong>Note:</strong> The Spring Boot server on Render may be sleeping due to inactivity. Triggering any fetch or clicking the <strong>Ping</strong> button will wake it up, which may take 40-50 seconds.
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Data synchronization buttons */}
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSyncFeedback(null);
+                            const res = await onSyncLocalToBackend();
+                            setSyncFeedback({
+                              type: res.success ? 'success' : 'error',
+                              text: res.message
+                            });
+                          }}
+                          className="py-2 px-3 border border-emerald-500/10 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center space-x-1 cursor-pointer transition-all"
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          <span>Upload local</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSyncFeedback(null);
+                            const res = await onSyncBackendToLocal();
+                            setSyncFeedback({
+                              type: res.success ? 'success' : 'error',
+                              text: res.message
+                            });
+                          }}
+                          className="py-2 px-3 border border-indigo-500/10 bg-indigo-500/5 hover:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-center space-x-1 cursor-pointer transition-all"
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          <span>Download server</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Database and shelf operations */}
               <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-3xl p-6 shadow-xs space-y-5 transition-colors duration-300">
                 <div className="flex items-center space-x-2 pb-2 border-b border-gray-50 dark:border-slate-800">

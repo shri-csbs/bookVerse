@@ -41,9 +41,9 @@ export default function About() {
           <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-xl inline-block">
             <Database className="h-5 w-5" />
           </div>
-          <h3 className="font-bold text-gray-900 dark:text-white text-base">High-Fidelity Google Books API</h3>
+          <h3 className="font-bold text-gray-900 dark:text-white text-base">High-Fidelity Open Library API</h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-            Harnessing the breadth of Google's global library indexing catalog, users can query and locate details of millions of classical and contemporary volumes instantly, complete with publishing metadata, genres, and artwork.
+            Harnessing the breadth of the Open Library global catalog, users can query and locate details of millions of classical and contemporary volumes instantly, complete with publishing metadata, genres, and high-resolution artwork.
           </p>
         </div>
 

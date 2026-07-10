@@ -440,8 +440,298 @@ const MOCK_BOOKS = [
       },
       language: "en"
     }
+  },
+  {
+    id: "mock_monk_ferrari",
+    volumeInfo: {
+      title: "The Monk Who Sold His Ferrari",
+      subtitle: "A Fable About Fulfilling Your Dreams & Reaching Your Destiny",
+      authors: ["Robin Sharma"],
+      publisher: "HarperOne",
+      publishedDate: "1997-04-15",
+      description: "A wonderfully crafted fable that tells the story of Julian Mantle, a superstar lawyer whose out-of-balance life leads to a near-fatal heart attack in a packed courtroom. His collapse brings on a spiritual crisis that forces him to seek answers to life's most important questions. Hoping to find happiness and fulfillment, he embarks on an extraordinary odyssey to an ancient culture where he meets the Sages of Sivana, who teach him a powerful system to release the potential of his mind, body, and soul.",
+      pageCount: 224,
+      categories: ["Self-Help"],
+      averageRating: 4.6,
+      ratingsCount: 35000,
+      imageLinks: {
+        smallThumbnail: "https://images.unsplash.com/photo-1544911405-44259b1284d7?q=80&w=300&auto=format&fit=crop",
+        thumbnail: "https://images.unsplash.com/photo-1544911405-44259b1284d7?q=80&w=300&auto=format&fit=crop"
+      },
+      language: "en"
+    }
+  },
+  {
+    id: "mock_5am_club",
+    volumeInfo: {
+      title: "The 5 AM Club",
+      subtitle: "Own Your Morning. Elevate Your Life.",
+      authors: ["Robin Sharma"],
+      publisher: "HarperCollins",
+      publishedDate: "2018-12-04",
+      description: "Legendary leadership and elite performance expert Robin Sharma introduced The 5am Club concept over twenty years ago, based on a revolutionary morning routine that has helped his clients maximize their productivity, activate their best health and bulletproof their serenity in this age of overwhelming complexity.",
+      pageCount: 336,
+      categories: ["Self-Help"],
+      averageRating: 4.5,
+      ratingsCount: 28000,
+      imageLinks: {
+        smallThumbnail: "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=300&auto=format&fit=crop",
+        thumbnail: "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=300&auto=format&fit=crop"
+      },
+      language: "en"
+    }
+  },
+  {
+    id: "mock_who_will_cry",
+    volumeInfo: {
+      title: "Who Will Cry When You Die?",
+      subtitle: "Life Lessons from the Monk Who Sold His Ferrari",
+      authors: ["Robin Sharma"],
+      publisher: "HarperCollins",
+      publishedDate: "1999-06-15",
+      description: "Do you feel that life is slipping by so fast that you might never get the chance to live with the meaning, happiness and joy you know you deserve? If so, this very special book by leadership guru Robin Sharma will guide you to a life that matters.",
+      pageCount: 240,
+      categories: ["Self-Help"],
+      averageRating: 4.4,
+      ratingsCount: 15000,
+      imageLinks: {
+        smallThumbnail: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300&auto=format&fit=crop",
+        thumbnail: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300&auto=format&fit=crop"
+      },
+      language: "en"
+    }
+  },
+  {
+    id: "mock_leader_no_title",
+    volumeInfo: {
+      title: "The Leader Who Had No Title",
+      subtitle: "A Modern Fable on Real Success in Business and in Life",
+      authors: ["Robin Sharma"],
+      publisher: "Simon & Schuster",
+      publishedDate: "2010-03-09",
+      description: "Robin Sharma has been sharing his leadership formula with Fortune 500 companies and trailblazers for years. For the first time, Sharma makes his proprietary process available to you, so that you can operate at your absolute best and help your organization thrive in these wild times.",
+      pageCount: 224,
+      categories: ["Self-Help"],
+      averageRating: 4.3,
+      ratingsCount: 12000,
+      imageLinks: {
+        smallThumbnail: "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=300&auto=format&fit=crop",
+        thumbnail: "https://images.unsplash.com/photo-1507679799987-c73779587ccf?q=80&w=300&auto=format&fit=crop"
+      },
+      language: "en"
+    }
   }
 ];
+
+// Store dynamically generated books via Gemini so they can be retrieved by details endpoint
+const DYNAMIC_BOOKS_MAP = new Map<string, any>();
+
+// In-memory search cache to prevent hitting API quotas or rate limits on typing and repeated searches
+const SEARCH_CACHE = new Map<string, { items: any[]; isFallback: boolean; fallbackReason?: string }>();
+
+async function generateBooksWithAI(query: string): Promise<any[]> {
+  if (!aiClient) return [];
+  
+  try {
+    const response = await aiClient.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: `Search query: "${query}"
+Please generate a list of 5 to 8 real or highly realistic books matching this search query. Return the results as a JSON array where each item matches the Google Books Volume schema.
+Make sure to include realistic categories, descriptions, published dates, ratings, and authors.
+Return ONLY the JSON array conforming to this schema. Do not wrap in markdown or any other text.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              id: { type: Type.STRING },
+              volumeInfo: {
+                type: Type.OBJECT,
+                properties: {
+                  title: { type: Type.STRING },
+                  subtitle: { type: Type.STRING },
+                  authors: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  publisher: { type: Type.STRING },
+                  publishedDate: { type: Type.STRING },
+                  description: { type: Type.STRING },
+                  pageCount: { type: Type.INTEGER },
+                  categories: {
+                    type: Type.ARRAY,
+                    items: { type: Type.STRING }
+                  },
+                  averageRating: { type: Type.NUMBER },
+                  ratingsCount: { type: Type.INTEGER },
+                  imageLinks: {
+                    type: Type.OBJECT,
+                    properties: {
+                      smallThumbnail: { type: Type.STRING },
+                      thumbnail: { type: Type.STRING }
+                    },
+                    required: ["smallThumbnail", "thumbnail"]
+                  },
+                  language: { type: Type.STRING }
+                },
+                required: ["title", "authors", "description", "imageLinks"]
+              }
+            },
+            required: ["id", "volumeInfo"]
+          }
+        }
+      }
+    });
+
+    if (response.text) {
+      const parsed = JSON.parse(response.text.trim());
+      const unsplashImages = [
+        "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=300&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=300&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=300&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?q=80&w=300&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1509021436665-8f07dbf5bf1d?q=80&w=300&auto=format&fit=crop",
+        "https://images.unsplash.com/photo-1447069387593-a5de0862481e?q=80&w=300&auto=format&fit=crop"
+      ];
+      return parsed.map((item: any, idx: number) => {
+        // Enforce fallback image links
+        if (!item.volumeInfo.imageLinks || !item.volumeInfo.imageLinks.thumbnail || item.volumeInfo.imageLinks.thumbnail.includes("example.com")) {
+          const img = unsplashImages[idx % unsplashImages.length];
+          item.volumeInfo.imageLinks = {
+            smallThumbnail: img,
+            thumbnail: img
+          };
+        }
+        // Save to cache
+        DYNAMIC_BOOKS_MAP.set(item.id, item);
+        return item;
+      });
+    }
+  } catch (err: any) {
+    const errMsg = err?.message || String(err);
+    if (errMsg.includes("429") || errMsg.includes("quota") || errMsg.includes("RESOURCE_EXHAUSTED") || errMsg.includes("limit")) {
+      console.warn(`[Gemini Free Tier Quota Exceeded] ${errMsg}`);
+    } else {
+      console.warn(`[Gemini Generation Warning] ${errMsg}`);
+    }
+  }
+  return [];
+}
+
+// Ensure every book has a secure HTTPS cover image or a beautiful Unsplash placeholder cover
+function sanitizeBook(book: any) {
+  if (!book || !book.volumeInfo) return book;
+
+  // Make sure volumeInfo.imageLinks exists
+  if (!book.volumeInfo.imageLinks) {
+    book.volumeInfo.imageLinks = {};
+  }
+
+  let thumbnail = book.volumeInfo.imageLinks.thumbnail || book.volumeInfo.imageLinks.smallThumbnail;
+
+  if (thumbnail && !thumbnail.includes("example.com")) {
+    // 1. Force HTTPS
+    if (thumbnail.startsWith("http://")) {
+      thumbnail = thumbnail.replace("http://", "https://");
+    }
+    // 2. Remove edge=curl which sometimes distorts or breaks certain formats
+    thumbnail = thumbnail.replace("&edge=curl", "");
+    
+    // Assign back
+    book.volumeInfo.imageLinks.thumbnail = thumbnail;
+    book.volumeInfo.imageLinks.smallThumbnail = thumbnail;
+  } else {
+    // Generate a beautiful, themed background cover from Unsplash deterministically based on title or ID
+    const title = book.volumeInfo.title || "";
+    let hash = 0;
+    for (let i = 0; i < title.length; i++) {
+      hash += title.charCodeAt(i);
+    }
+    
+    const unsplashCovers = [
+      "https://images.unsplash.com/photo-1544911405-44259b1284d7?q=80&w=300&auto=format&fit=crop", // Elegant dark textured cover
+      "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300&auto=format&fit=crop", // Golden yellow paper cover
+      "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=300&auto=format&fit=crop", // Mystic library book
+      "https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=300&auto=format&fit=crop", // Clean white book art
+      "https://images.unsplash.com/photo-1506880018603-83d5b814b5a6?q=80&w=300&auto=format&fit=crop", // Classical wooden desk cover
+      "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?q=80&w=300&auto=format&fit=crop", // Library shelves
+      "https://images.unsplash.com/photo-1509021436665-8f07dbf5bf1d?q=80&w=300&auto=format&fit=crop", // Indigo gradient cover
+      "https://images.unsplash.com/photo-1513001900722-370f803f498d?q=80&w=300&auto=format&fit=crop", // Ethereal clouds and pages
+      "https://images.unsplash.com/photo-1474932430478-367dbb6832c1?q=80&w=300&auto=format&fit=crop", // Warm morning wood journal
+      "https://images.unsplash.com/photo-1495640388908-05fa85288e61?q=80&w=300&auto=format&fit=crop", // Bookshelf focus
+      "https://images.unsplash.com/photo-1532012197267-da84d127e765?q=80&w=300&auto=format&fit=crop", // Modern artistic splash
+      "https://images.unsplash.com/photo-1516979187457-637abb4f9353?q=80&w=300&auto=format&fit=crop", // Close-up of library pages
+      "https://images.unsplash.com/photo-1456513080510-7bf3a84b82f8?q=80&w=300&auto=format&fit=crop", // Creative dark minimal cover
+      "https://images.unsplash.com/photo-1589829545856-d10d557cf95f?q=80&w=300&auto=format&fit=crop", // Law / deep reading texture
+      "https://images.unsplash.com/photo-1506784983877-45594efa4cbe?q=80&w=300&auto=format&fit=crop"  // Deep forest green minimal cover
+    ];
+
+    const chosen = unsplashCovers[hash % unsplashCovers.length];
+    book.volumeInfo.imageLinks.thumbnail = chosen;
+    book.volumeInfo.imageLinks.smallThumbnail = chosen;
+  }
+
+  return book;
+}
+
+// Map Open Library API response objects into our expected Google Books structure
+function mapOpenLibraryDocToGoogleBook(doc: any): any {
+  // Extract id from key: e.g. "/works/OL27479W" -> "OL27479W"
+  let id = doc.key ? doc.key.split('/').pop() : "";
+  if (!id) {
+    id = doc.cover_edition_key || (doc.edition_key && doc.edition_key[0]) || Math.random().toString(36).substring(7);
+  }
+
+  // Cover image: Search doc can have cover_i, cover_edition_key, edition_key, isbn
+  let coverUrl = "";
+  if (doc.cover_i) {
+    coverUrl = `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg`;
+  } else if (doc.cover_edition_key) {
+    coverUrl = `https://covers.openlibrary.org/b/olid/${doc.cover_edition_key}-L.jpg`;
+  } else if (doc.isbn && doc.isbn.length > 0) {
+    coverUrl = `https://covers.openlibrary.org/b/isbn/${doc.isbn[0]}-L.jpg`;
+  }
+
+  let publishedDate = "";
+  if (doc.first_publish_year) {
+    publishedDate = String(doc.first_publish_year);
+  } else if (doc.publish_date && doc.publish_date.length > 0) {
+    publishedDate = doc.publish_date[0];
+  }
+
+  let categories = doc.subject || [];
+  if (categories.length > 5) {
+    categories = categories.slice(0, 5);
+  }
+  if (categories.length === 0) {
+    categories = ["Literature"];
+  }
+
+  return {
+    id: id,
+    volumeInfo: {
+      title: doc.title || "Untitled Book",
+      subtitle: doc.subtitle || "",
+      authors: doc.author_name || ["Unknown Author"],
+      publisher: doc.publisher?.[0] || doc.publisher || "Unknown Publisher",
+      publishedDate: publishedDate,
+      description: doc.description || (doc.first_sentence ? (Array.isArray(doc.first_sentence) ? doc.first_sentence.join(" ") : doc.first_sentence) : "") || `Explore the rich contents of "${doc.title || "this book"}" by ${doc.author_name ? doc.author_name.join(", ") : "Unknown Author"}.`,
+      pageCount: doc.number_of_pages_median || doc.number_of_pages || 250,
+      categories: categories,
+      averageRating: doc.ratings_average ? parseFloat(doc.ratings_average.toFixed(1)) : 4.2,
+      ratingsCount: doc.ratings_count || 120,
+      imageLinks: {
+        smallThumbnail: coverUrl,
+        thumbnail: coverUrl
+      },
+      language: doc.language?.[0] || "en",
+      previewLink: doc.key ? `https://openlibrary.org${doc.key}` : "https://openlibrary.org"
+    }
+  };
+}
 
 // Helper to filter/search inside our high-fidelity local catalog
 function searchMockBooks(query: string) {
@@ -495,29 +785,79 @@ app.get("/api/books/search", async (req, res) => {
     return;
   }
 
+  const trimmedQuery = query.trim();
+  const normalizedQuery = trimmedQuery.toLowerCase();
+
+  // 1. Check in-memory search cache to prevent duplicate backend searches
+  if (SEARCH_CACHE.has(normalizedQuery)) {
+    console.log(`[Search Cache Hit] Returning cached result for query: "${trimmedQuery}"`);
+    res.json(SEARCH_CACHE.get(normalizedQuery));
+    return;
+  }
+
+  // 2. Skip external API queries for single or double-letter typing queries to save API rate-limiting
+  if (trimmedQuery.length < 3 && normalizedQuery !== "ai") {
+    console.log(`[Short Query Optimization] Bypassing APIs for "${trimmedQuery}". Returning local matches.`);
+    const localItems = searchMockBooks(trimmedQuery);
+    const sanitizedItems = (localItems || []).map(b => sanitizeBook(JSON.parse(JSON.stringify(b))));
+    const responseData = { items: sanitizedItems, isFallback: true, fallbackReason: "Short query local fallback" };
+    SEARCH_CACHE.set(normalizedQuery, responseData);
+    res.json(responseData);
+    return;
+  }
+
+  let items: any[] = [];
+  let isFallback = false;
+  let fallbackReason = "";
+
+  // 3. Attempt Open Library Search API fetch
   try {
-    const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=${encodeURIComponent(query)}&maxResults=20`);
-    if (!response.ok) {
-      throw new Error(`Google Books API responded with status ${response.status}`);
-    }
-    const data = await response.json();
-    
-    // If we got valid items, return them. Otherwise fallback to prevent blank result
-    if (data.items && data.items.length > 0) {
-      res.json(data);
+    const response = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(trimmedQuery)}&limit=20`);
+    if (response.ok) {
+      const data = await response.json();
+      if (data.docs && data.docs.length > 0) {
+        items = data.docs.map((doc: any) => mapOpenLibraryDocToGoogleBook(doc));
+      }
     } else {
-      console.log(`No items returned from Google Books for query '${query}'. Providing high-fidelity mock results.`);
-      res.json({ items: searchMockBooks(query), isFallback: true });
+      console.warn(`Open Library API responded with status ${response.status}`);
+      fallbackReason = `Open Library API responded with status ${response.status}`;
     }
   } catch (error: any) {
-    console.warn(`[Google Books Proxy Warning] Fallback triggered. Reason: ${error.message}`);
-    // Graceful recovery from 429 Too Many Requests or network downtime
-    res.json({
-      items: searchMockBooks(query),
-      isFallback: true,
-      fallbackReason: error.message
-    });
+    console.warn(`[Open Library Proxy Warning] Open Library search failed: ${error.message}`);
+    fallbackReason = error.message;
   }
+
+  // 4. If we got fewer than 3 items, try to generate relevant real-world books using Gemini!
+  // Only try if Gemini client exists and the query is reasonably long (>= 4 chars) to avoid wasting quota on random fragments
+  if (items.length < 3 && aiClient && trimmedQuery.length >= 4) {
+    console.log(`Fewer than 3 items returned from Open Library for query '${trimmedQuery}'. Attempting Gemini AI search generation...`);
+    try {
+      const aiItems = await generateBooksWithAI(trimmedQuery);
+      if (aiItems && aiItems.length > 0) {
+        items = [...items, ...aiItems];
+        isFallback = true;
+      }
+    } catch (aiErr: any) {
+      console.warn(`[Gemini Generation Graceful Fallback] Failed or rate limited (429): ${aiErr.message}`);
+    }
+  }
+
+  // 5. If we still have absolutely nothing, fall back to our high-fidelity curated local database
+  if (items.length === 0) {
+    console.log(`No items generated or fetched for query '${trimmedQuery}'. Providing curated high-fidelity mock results.`);
+    items = searchMockBooks(trimmedQuery);
+    isFallback = true;
+  }
+
+  // 6. Sanitize every book to use secure HTTPS links and beautiful Unsplash fallback covers
+  const sanitizedItems = (items || []).map(b => sanitizeBook(JSON.parse(JSON.stringify(b))));
+
+  const responseData = { items: sanitizedItems, isFallback, fallbackReason };
+  
+  // 7. Store the final result in the cache
+  SEARCH_CACHE.set(normalizedQuery, responseData);
+
+  res.json(responseData);
 });
 
 /**
@@ -530,24 +870,99 @@ app.get("/api/books/details/:id", async (req, res) => {
   // Immediately prioritize local mock db if ID belongs to it or starts with "mock_"
   const localMatch = MOCK_BOOKS.find(b => b.id === id);
   if (localMatch) {
-    res.json(localMatch);
+    res.json(sanitizeBook(JSON.parse(JSON.stringify(localMatch))));
+    return;
+  }
+
+  // Check our dynamic registry of Gemini generated books
+  const dynamicMatch = DYNAMIC_BOOKS_MAP.get(id);
+  if (dynamicMatch) {
+    res.json(sanitizeBook(JSON.parse(JSON.stringify(dynamicMatch))));
     return;
   }
 
   try {
-    const response = await fetch(`https://www.googleapis.com/books/v1/volumes/${id}`);
-    if (!response.ok) {
-      throw new Error(`Google Books API responded with status ${response.status}`);
+    let bookItem: any = null;
+    let description = "";
+
+    // 1. Fetch metadata via search
+    try {
+      const searchResponse = await fetch(`https://openlibrary.org/search.json?q=${encodeURIComponent(id)}&limit=1`);
+      if (searchResponse.ok) {
+        const searchData = await searchResponse.json();
+        if (searchData.docs && searchData.docs.length > 0) {
+          bookItem = mapOpenLibraryDocToGoogleBook(searchData.docs[0]);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Open Library Details] Search metadata fetch failed: ${e.message}`);
     }
-    const data = await response.json();
-    res.json(data);
+
+    // 2. Fetch description and fallback covers via works API
+    try {
+      const detailsResponse = await fetch(`https://openlibrary.org/works/${id}.json`);
+      if (detailsResponse.ok) {
+        const detailsData = await detailsResponse.json();
+        if (detailsData.description) {
+          if (typeof detailsData.description === 'string') {
+            description = detailsData.description;
+          } else if (detailsData.description.value) {
+            description = detailsData.description.value;
+          }
+        }
+
+        if (!bookItem) {
+          let coverUrl = "";
+          if (detailsData.covers && detailsData.covers.length > 0) {
+            coverUrl = `https://covers.openlibrary.org/b/id/${detailsData.covers[0]}-L.jpg`;
+          }
+          bookItem = {
+            id: id,
+            volumeInfo: {
+              title: detailsData.title || "Untitled Book",
+              authors: ["Unknown Author"],
+              publisher: "Unknown Publisher",
+              publishedDate: detailsData.first_publish_date || "",
+              description: description,
+              pageCount: 250,
+              categories: detailsData.subjects ? detailsData.subjects.slice(0, 5) : ["General"],
+              averageRating: 4.2,
+              ratingsCount: 120,
+              imageLinks: {
+                smallThumbnail: coverUrl,
+                thumbnail: coverUrl
+              },
+              language: "en"
+            }
+          };
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Open Library Details] Works JSON fetch failed: ${e.message}`);
+    }
+
+    if (bookItem) {
+      if (description) {
+        bookItem.volumeInfo.description = description;
+      }
+      res.json(sanitizeBook(bookItem));
+    } else {
+      throw new Error(`Book details for ${id} could not be resolved from Open Library`);
+    }
   } catch (error: any) {
-    console.warn(`[Google Books Details Warning] Fallback triggered for ID: ${id}. Reason: ${error.message}`);
+    console.warn(`[Open Library Details Warning] Fallback triggered for ID: ${id}. Reason: ${error.message}`);
     
+    // Check dynamic registry as a fallback in the catch block as well
+    const backupDynamicMatch = DYNAMIC_BOOKS_MAP.get(id);
+    if (backupDynamicMatch) {
+      res.json(sanitizeBook(JSON.parse(JSON.stringify(backupDynamicMatch))));
+      return;
+    }
+
     // Graceful recovery: search inside our mock database for the closest id match
     const backupMatch = MOCK_BOOKS.find(b => b.id.toLowerCase() === id.toLowerCase() || b.volumeInfo.title.toLowerCase().includes(id.toLowerCase()));
     if (backupMatch) {
-      res.json(backupMatch);
+      res.json(sanitizeBook(JSON.parse(JSON.stringify(backupMatch))));
     } else {
       // Default placeholder if absolutely not found
       res.status(404).json({ error: "Book details could not be found or rate limit is active." });
@@ -643,6 +1058,276 @@ app.post("/api/books/summarize-hf", async (req, res) => {
 });
 
 /**
+ * AI Search Insights and Curated Recommendations
+ * POST /api/books/search-insights
+ */
+app.post("/api/books/search-insights", async (req, res) => {
+  const { query } = req.body;
+  if (!query) {
+    res.status(400).json({ error: "Query parameter 'query' is required" });
+    return;
+  }
+
+  const trimmedQuery = query.trim();
+  const lowerQuery = trimmedQuery.toLowerCase();
+
+  // 1. Sandbox fallback if Gemini client is not initialized
+  if (!aiClient) {
+    let topicSummary = `Explore the fascinating literature and thematic concepts surrounding "${trimmedQuery}". Books in this genre delve into the core human experiences, intellectual ideas, and narrative journeys of the subject.`;
+    let recommendedBooks: any[] = [];
+
+    if (lowerQuery.includes("habit") || lowerQuery.includes("self") || lowerQuery.includes("improve") || lowerQuery.includes("success") || lowerQuery.includes("productivity")) {
+      topicSummary = "Self-improvement and habit design focus on human psychology, behavioral modification, and continuous self-optimization. These books offer actionable frameworks to bridge the gap between intent and daily execution.";
+      recommendedBooks = [
+        {
+          id: "mock_atomic_habits",
+          volumeInfo: {
+            title: "Atomic Habits",
+            subtitle: "An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+            authors: ["James Clear"],
+            publisher: "Avery",
+            publishedDate: "2018",
+            description: "A highly practical framework to build good habits and break bad ones via tiny 1% daily changes.",
+            pageCount: 320,
+            categories: ["Self-Help"],
+            averageRating: 4.8,
+            ratingsCount: 45000,
+            imageLinks: { thumbnail: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300" }
+          },
+          recReason: "The absolute standard for understanding how tiny, identity-based habits compound into transformative lifestyle results."
+        },
+        {
+          id: "mock_monk_ferrari",
+          volumeInfo: {
+            title: "The Monk Who Sold His Ferrari",
+            subtitle: "A Fable About Fulfilling Your Dreams",
+            authors: ["Robin Sharma"],
+            publisher: "HarperOne",
+            publishedDate: "1997",
+            description: "A beautiful fable about a lawyer who undergoes a spiritual awakening in the Himalayas.",
+            pageCount: 198,
+            categories: ["Self-Help"],
+            averageRating: 4.5,
+            ratingsCount: 8900,
+            imageLinks: { thumbnail: "https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=300" }
+          },
+          recReason: "Offers beautiful spiritual insights on managing mind, body, and soul in a fast-paced modern world."
+        }
+      ];
+    } else if (lowerQuery.includes("sci") || lowerQuery.includes("physics") || lowerQuery.includes("space") || lowerQuery.includes("cosmic") || lowerQuery.includes("future")) {
+      topicSummary = "Science Fiction pushes the boundaries of speculative engineering, astrophysics, and sociology, exploring how humanity responds to space travel, technological breakthroughs, and alien environments.";
+      recommendedBooks = [
+        {
+          id: "yE6_EAAAQBAJ",
+          volumeInfo: {
+            title: "Project Hail Mary",
+            subtitle: "A Novel",
+            authors: ["Andy Weir"],
+            publisher: "Ballantine",
+            publishedDate: "2021",
+            description: "A lone astronaut wakes up on a starship with amnesia and must use spec-physics to save Earth from a solar disaster.",
+            pageCount: 476,
+            categories: ["Science Fiction"],
+            averageRating: 4.7,
+            ratingsCount: 12000,
+            imageLinks: { thumbnail: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?q=80&w=300" }
+          },
+          recReason: "A high-octane celebration of speculative physics, human problem solving, and unlikely cosmic friendships."
+        },
+        {
+          id: "4H3GDwAAQBAJ",
+          volumeInfo: {
+            title: "Dune",
+            subtitle: "The Epic Masterpiece",
+            authors: ["Frank Herbert"],
+            publisher: "Chilton",
+            publishedDate: "1965",
+            description: "The seminal masterpiece of political chess, spice trade, and ecological struggle on the desert planet Arrakis.",
+            pageCount: 688,
+            categories: ["Science Fiction"],
+            averageRating: 4.5,
+            ratingsCount: 25000,
+            imageLinks: { thumbnail: "https://images.unsplash.com/photo-1506703719100-a0f3a48c0f86?q=80&w=300" }
+          },
+          recReason: "Unmatched in political depth, religious philosophy, and world-building of interstellar civilizations."
+        }
+      ];
+    } else {
+      recommendedBooks = [
+        {
+          id: "mock_midnight_library",
+          volumeInfo: {
+            title: "The Midnight Library",
+            subtitle: "A Novel",
+            authors: ["Matt Haig"],
+            publisher: "Viking",
+            publishedDate: "2020",
+            description: "Between life and death is a library where shelves go on forever, allowing you to try every life you could have lived.",
+            pageCount: 304,
+            categories: ["Fiction"],
+            averageRating: 4.2,
+            ratingsCount: 8400,
+            imageLinks: { thumbnail: "https://images.unsplash.com/photo-1512820790803-83ca734da794?q=80&w=300" }
+          },
+          recReason: "A touching and extremely comforting exploration of life choices, regrets, and finding meaning in our current reality."
+        },
+        {
+          id: "mock_atomic_habits",
+          volumeInfo: {
+            title: "Atomic Habits",
+            subtitle: "An Easy & Proven Way to Build Good Habits & Break Bad Ones",
+            authors: ["James Clear"],
+            publisher: "Avery",
+            publishedDate: "2018",
+            description: "James Clear's masterwork on creating positive habit structures and compound improvement.",
+            pageCount: 320,
+            categories: ["Self-Help"],
+            averageRating: 4.8,
+            ratingsCount: 45000,
+            imageLinks: { thumbnail: "https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?q=80&w=300" }
+          },
+          recReason: "Highly recommended for practical self-structuring and daily routine management across all reading styles."
+        }
+      ];
+    }
+
+    const sanitizedBooks = recommendedBooks.map(b => {
+      const sanitized = sanitizeBook(b);
+      DYNAMIC_BOOKS_MAP.set(sanitized.id, sanitized);
+      return {
+        ...sanitized,
+        recReason: b.recReason
+      };
+    });
+
+    res.json({
+      isSandbox: true,
+      topicSummary,
+      recommendedBooks: sanitizedBooks
+    });
+    return;
+  }
+
+  // 2. Real Gemini API generation
+  try {
+    const prompt = `Search Topic: "${trimmedQuery}"
+Please analyze this search query, provide a clear, inspiring 2-3 sentence overview/summary of the topic's value to a reader, and recommend exactly 3 highly relevant real books on this topic.
+For each book, return:
+1. id (generate a unique, clean ID string e.g. "ai_rec_habits_atomic" or use standard library IDs if known).
+2. volumeInfo conforming to the standard book schema (title, subtitle, authors, publisher, publishedDate, description, pageCount, categories, averageRating, ratingsCount, imageLinks with thumbnail, language).
+3. recReason: A short, compelling explanation of why this specific book is recommended for this search topic.
+
+Return the results ONLY as a JSON object with this exact structure:
+{
+  "topicSummary": "Your 2-3 sentence overview",
+  "recommendedBooks": [
+    {
+      "id": "unique_id_string",
+      "volumeInfo": {
+        "title": "...",
+        "subtitle": "...",
+        "authors": ["..."],
+        "publisher": "...",
+        "publishedDate": "...",
+        "description": "...",
+        "pageCount": 123,
+        "categories": ["..."],
+        "averageRating": 4.5,
+        "ratingsCount": 120,
+        "imageLinks": {
+          "smallThumbnail": "",
+          "thumbnail": ""
+        },
+        "language": "en"
+      },
+      "recReason": "Compelling recommendation reason"
+    }
+  ]
+}`;
+
+    const response = await aiClient.models.generateContent({
+      model: "gemini-3.5-flash",
+      contents: prompt,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            topicSummary: { type: Type.STRING },
+            recommendedBooks: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  id: { type: Type.STRING },
+                  recReason: { type: Type.STRING },
+                  volumeInfo: {
+                    type: Type.OBJECT,
+                    properties: {
+                      title: { type: Type.STRING },
+                      subtitle: { type: Type.STRING },
+                      authors: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING }
+                      },
+                      publisher: { type: Type.STRING },
+                      publishedDate: { type: Type.STRING },
+                      description: { type: Type.STRING },
+                      pageCount: { type: Type.INTEGER },
+                      categories: {
+                        type: Type.ARRAY,
+                        items: { type: Type.STRING }
+                      },
+                      averageRating: { type: Type.NUMBER },
+                      ratingsCount: { type: Type.INTEGER },
+                      imageLinks: {
+                        type: Type.OBJECT,
+                        properties: {
+                          smallThumbnail: { type: Type.STRING },
+                          thumbnail: { type: Type.STRING }
+                        },
+                        required: ["smallThumbnail", "thumbnail"]
+                      },
+                      language: { type: Type.STRING }
+                    },
+                    required: ["title", "authors", "description", "imageLinks"]
+                  }
+                },
+                required: ["id", "volumeInfo", "recReason"]
+              }
+            }
+          },
+          required: ["topicSummary", "recommendedBooks"]
+        }
+      }
+    });
+
+    if (response.text) {
+      const data = JSON.parse(response.text.trim());
+      const sanitizedBooks = data.recommendedBooks.map((b: any) => {
+        const sanitized = sanitizeBook(b);
+        DYNAMIC_BOOKS_MAP.set(sanitized.id, sanitized);
+        return {
+          ...sanitized,
+          recReason: b.recReason
+        };
+      });
+
+      res.json({
+        isSandbox: false,
+        topicSummary: data.topicSummary,
+        recommendedBooks: sanitizedBooks
+      });
+    } else {
+      throw new Error("No text returned from Gemini API");
+    }
+  } catch (error: any) {
+    console.error("[Search Insights Route] Error generating AI search insights:", error);
+    res.status(500).json({ error: "Failed to generate AI search recommendations: " + error.message });
+  }
+});
+
+/**
  * AI Recommendation engine using Gemini 3.5 Flash
  * POST /api/books/recommend
  */
@@ -703,8 +1388,122 @@ Here are some curated general recommendations based on popular genres:
       text: response.text || "No recommendations could be generated at this time."
     });
   } catch (error: any) {
-    console.error("Gemini API Error:", error);
-    res.status(500).json({ error: error.message || "AI engine experienced a glitch. Please try again." });
+    console.warn("[Recommendations Route] Gemini API encountered error. Generating beautiful offline fallback...", error);
+    
+    const errorMessage = error?.message || String(error);
+    const isServiceUnavailable = errorMessage.includes("503") || errorMessage.includes("UNAVAILABLE") || errorMessage.includes("demand");
+    const noticeHeader = isServiceUnavailable
+      ? `> ⚠️ **Service Notice**: The live Gemini AI model is currently experiencing temporary high-demand spikes. To keep your experience seamless, our **Curated Cognitive Fallback Engine** has instantly analyzed your request and compiled these highly-rated literary matches.`
+      : `> ⚠️ **Service Notice**: Live AI recommendation quotas have been exceeded for this session. Our **Curated Cognitive Fallback Engine** has instantly analyzed your request and compiled these highly-rated literary matches.`;
+
+    let fallbackText = `### 🚀 Welcome to Bookverse AI Recommendations!
+
+${noticeHeader}
+
+`;
+
+    if (prompt) {
+      const pLower = prompt.toLowerCase();
+      fallbackText += `#### 🔍 Curated Response for: *"${prompt}"*\n\n`;
+
+      if (pLower.includes("habit") || pLower.includes("self") || pLower.includes("improve") || pLower.includes("personal") || pLower.includes("productivity") || pLower.includes("success") || pLower.includes("grow")) {
+        fallbackText += `Based on your request, we recommend these powerful self-mastery books to elevate your habits and lifestyle:
+
+1. **Atomic Habits** by *James Clear* (Genre: Self-Help)
+   - **Why You'll Love It**: James Clear delivers an elegant, practical blueprint for tiny daily adjustments that lead to remarkable long-term compounding results. It is the gold standard of modern habit design.
+2. **The Monk Who Sold His Ferrari** by *Robin Sharma* (Genre: Self-Help / Philosophy)
+   - **Why You'll Love It**: A beautifully structured modern fable detailing Julian Mantle's spiritual awakening. It offers practical tools for unlocking mental potential and inner tranquility.
+3. **The 5 AM Club** by *Robin Sharma* (Genre: Self-Help / Productivity)
+   - **Why You'll Love It**: Introduces a revolutionary morning routine that helps individuals maximize productivity, build elite health, and protect peace of mind in our hyper-connected world.`;
+      } else if (pLower.includes("sci") || pLower.includes("space") || pLower.includes("future") || pLower.includes("physics") || pLower.includes("alien") || pLower.includes("star") || pLower.includes("cosmic")) {
+        fallbackText += `Here are our top space-faring and speculative science fiction masterpieces:
+
+1. **Project Hail Mary** by *Andy Weir* (Genre: Science Fiction)
+   - **Why You'll Love It**: A brilliant scientific thriller featuring a lone astronaut who must solve speculative physics problems on the fly to save Earth from a catastrophic solar extinction event.
+2. **Dune** by *Frank Herbert* (Genre: Sci-Fi / Space Opera)
+   - **Why You'll Love It**: The legendary masterpiece exploring the ecology, political chess games, and messianic prophecies of Arrakis, the desert planet.
+3. **The Hobbit** by *J.R.R. Tolkien* (Genre: Fantasy / Adventure)
+   - **Why You'll Love It**: While fantasy, its sheer scale of world-building matches the greatest sci-fi epics. A delightful story of Bilbo Baggins' unexpected expedition.`;
+      } else if (pLower.includes("mystery") || pLower.includes("thriller") || pLower.includes("silent") || pLower.includes("crime") || pLower.includes("murder") || pLower.includes("suspense")) {
+        fallbackText += `We have selected these highly rated psychological thrillers and crime investigations:
+
+1. **The Silent Patient** by *Alex Michaelides* (Genre: Psychological Thriller)
+   - **Why You'll Love It**: Alicia Berenson shoots her husband five times in the face and never speaks another word. This gripping, legendary mystery keeps you guessing until the absolute final page.
+2. **The Thursday Murder Club** by *Richard Osman* (Genre: Mystery)
+   - **Why You'll Love It**: In a peaceful retirement village, four unlikely septuagenarian friends meet weekly to investigate unsolved cold cases, finding themselves in the middle of a live investigation.`;
+      } else if (pLower.includes("biography") || pLower.includes("life") || pLower.includes("real") || pLower.includes("memoir") || pLower.includes("history") || pLower.includes("sapiens") || pLower.includes("human")) {
+        fallbackText += `Explore these exceptional memoirs, biographies, and historical analyses of our collective human journey:
+
+1. **Sapiens: A Brief History of Humankind** by *Yuval Noah Harari* (Genre: History / Anthropology)
+   - **Why You'll Love It**: This book details the major scientific, agricultural, and cognitive revolutions that allowed Homo sapiens to dominate the globe.
+2. **Educated: A Memoir** by *Tara Westover* (Genre: Biography / Memoir)
+   - **Why You'll Love It**: An unforgettable, deeply moving personal account of survival, self-invention, and the power of higher education to transform a life from rural isolation to a Cambridge PhD.
+3. **Steve Jobs** by *Walter Isaacson* (Genre: Biography)
+   - **Why You'll Love It**: A riveting, raw chronicle of the intense and creative entrepreneur whose sheer will and perfectionism revolutionized six global industries.`;
+      } else {
+        fallbackText += `We analyzed your prompt and matching genres. Here are some incredible, globally acclaimed titles you should explore next:
+
+1. **The Midnight Library** by *Matt Haig* (Genre: Modern Fiction)
+   - **Why You'll Love It**: A beautiful, reflective novel exploring the lives you could have lived if you made other choices. Ideal for readers seeking a touch of magic, philosophy, and mental wellness.
+2. **Atomic Habits** by *James Clear* (Genre: Self-Help)
+   - **Why You'll Love It**: Widely loved for its actionable ideas on human psychology, identity-based habits, and achieving mastery.
+3. **The Silent Patient** by *Alex Michaelides* (Genre: Mystery)
+   - **Why You'll Love It**: A superb puzzle of an investigation that explores deep trauma, psychological silence, and the complex human mind.`;
+      }
+    } else {
+      const hasSelfHelp = Array.isArray(savedBooks) && savedBooks.some((b: any) => b.categories?.some((c: string) => c.toLowerCase().includes("self") || c.toLowerCase().includes("habit")));
+      const hasSciFi = Array.isArray(savedBooks) && savedBooks.some((b: any) => b.categories?.some((c: string) => c.toLowerCase().includes("sci") || c.toLowerCase().includes("fiction")));
+      const hasMystery = Array.isArray(savedBooks) && savedBooks.some((b: any) => b.categories?.some((c: string) => c.toLowerCase().includes("mystery") || c.toLowerCase().includes("thriller")));
+
+      let archetype = "The Versatile Explorer";
+      let descriptionStr = "You have an eclectic, high-taste reading profile that balances deep human interest narratives, classic structures, and modern practical ideas.";
+      
+      if (hasSelfHelp && hasSciFi) {
+        archetype = "The Future-Focused Growth Catalyst";
+        descriptionStr = "You possess a fascinating balance between strategic personal mastery and open-minded speculative imagination. You read to optimize your current reality while dreaming of vast horizons.";
+      } else if (hasSelfHelp) {
+        archetype = "The Continuous Self-Optimizer";
+        descriptionStr = "You are highly focused on behavioral design, cognitive reprogramming, and elite productivity. You treat books as practical blueprints to optimize daily peace, focus, and strategic mastery.";
+      } else if (hasSciFi) {
+        archetype = "The Galactic Speculative Thinker";
+        descriptionStr = "You love immersing yourself in expansive new landscapes, intricate scientific systems, and profound questions of cosmic sociology and human future paths.";
+      } else if (hasMystery) {
+        archetype = "The Analytical Puzzle Master";
+        descriptionStr = "You have an outstanding appreciation for intricate plotlines, psychology, hidden human motives, and high-stakes detective games. You love solving complex narrative puzzles.";
+      }
+
+      fallbackText += `- **Your Reading Archetype**: **${archetype}**\n- *Profile Analysis*: ${descriptionStr}\n\n### 📚 Bespoke Recommendations For You:\n\n`;
+
+      if (archetype.includes("Growth") || archetype.includes("Optimizer")) {
+        fallbackText += `1. **The Monk Who Sold His Ferrari** by *Robin Sharma* (Genre: Self-Help)
+   - **Why You'll Love It**: Perfect companion to your library. It delivers a wonderful fable-like introduction to mindfulness and habit optimization.
+2. **The 5 AM Club** by *Robin Sharma* (Genre: Self-Help / Productivity)
+   - **Why You'll Love It**: It will help you construct a pristine morning routine to implement the self-help philosophies you love.
+3. **Steve Jobs** by *Walter Isaacson* (Genre: Biography)
+   - **Why You'll Love It**: A fascinating real-world case study of a relentless visionary who applied extreme focus to shape our computing world.`;
+      } else if (archetype.includes("Galactic") || archetype.includes("Speculative")) {
+        fallbackText += `1. **Project Hail Mary** by *Andy Weir* (Genre: Science Fiction)
+   - **Why You'll Love It**: Matches your love of deep science fiction. It is a highly fast-paced, optimistic story about scientific companionship and saving civilizations.
+2. **Dune** by *Frank Herbert* (Genre: Space Opera / Sci-Fi)
+   - **Why You'll Love It**: The foundational classic of world-building and cosmic politics. Essential reading for any speculative literature explorer.
+3. **The Midnight Library** by *Matt Haig* (Genre: Modern Fiction)
+   - **Why You'll Love It**: Blends a magical multiverse premise with deep psychological reflection on choice, regret, and finding joy.`;
+      } else {
+        fallbackText += `1. **The Silent Patient** by *Alex Michaelides* (Genre: Mystery / Thriller)
+   - **Why You'll Love It**: A gripping, award-winning thriller detailing psychological silence and hidden family secrets. Highly recommended for fans of mystery.
+2. **The Midnight Library** by *Matt Haig* (Genre: Fiction)
+   - **Why You'll Love It**: A poignant exploration of parallel lifetimes and regret. An extremely comforting and engaging read.
+3. **Atomic Habits** by *James Clear* (Genre: Self-Help)
+   - **Why You'll Love It**: A highly accessible and transformative exploration of how minor daily behaviors shape our lifetime destiny.`;
+      }
+
+      fallbackText += `\n\n- **Reading Tip**: Try the **"15-Page Rule"** — commit to reading exactly 15 pages every morning with your favorite warm drink before looking at any digital screens. This small, protected window leads to over 15 finished books a year!`;
+    }
+
+    res.json({
+      isSandbox: true,
+      text: fallbackText
+    });
   }
 });
 

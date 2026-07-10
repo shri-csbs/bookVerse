@@ -44,6 +44,7 @@ export interface SavedBook {
   review: string;
   dateAdded: string;
   dateUpdated: string;
+  dbId?: number; // Spring Boot database primary key ID
 }
 
 export interface UserProfile {

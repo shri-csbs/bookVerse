@@ -13,6 +13,13 @@ import About from './components/About';
 import Contact from './components/Contact';
 import JavaHub from './components/JavaHub';
 import { SavedBook, GoogleBookItem, ReadingStatus, UserProfile } from './types';
+import { 
+  testConnection, 
+  fetchAllBooks, 
+  saveBookToBackend, 
+  updateBookProgress, 
+  deleteBook 
+} from './lib/api';
 
 // Curated mock starting books for premium first-turn display
 const INITIAL_STARTER_BOOKS: SavedBook[] = [
@@ -145,6 +152,15 @@ export default function App() {
     return localStorage.getItem('bookverse_theme') === 'dark';
   });
 
+  // Spring Boot Live Sync & Backend Configuration State
+  const [backendMode, setBackendMode] = useState<'local' | 'spring'>(() => {
+    return (localStorage.getItem('bookverse_backend_mode') as 'local' | 'spring') || 'spring';
+  });
+  const [backendUrl, setBackendUrl] = useState<string>(() => {
+    return localStorage.getItem('bookverse_backend_url') || 'https://bookverse-8t9g.onrender.com';
+  });
+  const [connectionStatus, setConnectionStatus] = useState<'connected' | 'error' | 'connecting' | 'idle'>('connecting');
+
   // Simulated Login and User Profile State
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
     return localStorage.getItem('bookverse_is_logged_in') === 'true';
@@ -166,7 +182,15 @@ export default function App() {
     };
   });
 
-  // Sync profile & isLoggedIn changes with localStorage
+  // Sync states with localStorage
+  useEffect(() => {
+    localStorage.setItem('bookverse_backend_mode', backendMode);
+  }, [backendMode]);
+
+  useEffect(() => {
+    localStorage.setItem('bookverse_backend_url', backendUrl);
+  }, [backendUrl]);
+
   useEffect(() => {
     localStorage.setItem('bookverse_user_profile', JSON.stringify(profile));
   }, [profile]);
@@ -175,21 +199,54 @@ export default function App() {
     localStorage.setItem('bookverse_is_logged_in', String(isLoggedIn));
   }, [isLoggedIn]);
 
-  // Load from local storage or pre-populate starter books
-  useEffect(() => {
-    const local = localStorage.getItem('bookverse_library');
-    if (local) {
+  // Load books dynamically based on the active backend mode
+  const loadLibraryData = async (mode: 'local' | 'spring', url: string) => {
+    if (mode === 'spring') {
+      setConnectionStatus('connecting');
       try {
-        setSavedBooks(JSON.parse(local));
+        const isOk = await testConnection(url);
+        if (isOk) {
+          const books = await fetchAllBooks(url);
+          setSavedBooks(books);
+          setConnectionStatus('connected');
+          localStorage.setItem('bookverse_library', JSON.stringify(books));
+        } else {
+          setConnectionStatus('error');
+          const local = localStorage.getItem('bookverse_library');
+          if (local) {
+            setSavedBooks(JSON.parse(local));
+          } else {
+            setSavedBooks(INITIAL_STARTER_BOOKS);
+          }
+        }
       } catch (err) {
-        console.error('Error parsing books local storage:', err);
-        setSavedBooks(INITIAL_STARTER_BOOKS);
+        console.error("Failed to fetch from live Spring Boot backend:", err);
+        setConnectionStatus('error');
+        const local = localStorage.getItem('bookverse_library');
+        if (local) {
+          setSavedBooks(JSON.parse(local));
+        } else {
+          setSavedBooks(INITIAL_STARTER_BOOKS);
+        }
       }
     } else {
-      setSavedBooks(INITIAL_STARTER_BOOKS);
-      localStorage.setItem('bookverse_library', JSON.stringify(INITIAL_STARTER_BOOKS));
+      setConnectionStatus('idle');
+      const local = localStorage.getItem('bookverse_library');
+      if (local) {
+        try {
+          setSavedBooks(JSON.parse(local));
+        } catch (e) {
+          setSavedBooks(INITIAL_STARTER_BOOKS);
+        }
+      } else {
+        setSavedBooks(INITIAL_STARTER_BOOKS);
+      }
     }
-  }, []);
+  };
+
+  useEffect(() => {
+    loadLibraryData(backendMode, backendUrl);
+  }, [backendMode, backendUrl]);
 
   // Sync dark mode class with state
   useEffect(() => {
@@ -242,6 +299,79 @@ export default function App() {
     saveToLocalStorage(importedBooks);
   };
 
+  // Live Synchronization Utilities
+  const handleSyncLocalToBackend = async () => {
+    if (backendMode !== 'spring') return { success: false, message: 'Backend is configured in Sandbox Mode.' };
+    setConnectionStatus('connecting');
+    try {
+      const isOk = await testConnection(backendUrl);
+      if (!isOk) {
+        setConnectionStatus('error');
+        return { success: false, message: 'Live Spring Boot server is unreachable.' };
+      }
+
+      let successCount = 0;
+      const uploadedBooks: SavedBook[] = [];
+      for (const book of savedBooks) {
+        try {
+          const saved = await saveBookToBackend(backendUrl, book);
+          uploadedBooks.push(saved);
+          successCount++;
+        } catch (e) {
+          console.error("Failed to sync book to backend:", book.title, e);
+          uploadedBooks.push(book);
+        }
+      }
+
+      setSavedBooks(uploadedBooks);
+      saveToLocalStorage(uploadedBooks);
+      setConnectionStatus('connected');
+      return { 
+        success: true, 
+        message: `Successfully synchronized ${successCount} of ${savedBooks.length} books to the Live Spring Boot server!` 
+      };
+    } catch (err) {
+      setConnectionStatus('error');
+      return { success: false, message: `Sync failed: ${(err as Error).message}` };
+    }
+  };
+
+  const handleSyncBackendToLocal = async () => {
+    if (backendMode !== 'spring') return { success: false, message: 'Backend is configured in Sandbox Mode.' };
+    setConnectionStatus('connecting');
+    try {
+      const isOk = await testConnection(backendUrl);
+      if (!isOk) {
+        setConnectionStatus('error');
+        return { success: false, message: 'Live Spring Boot server is unreachable.' };
+      }
+
+      const books = await fetchAllBooks(backendUrl);
+      setSavedBooks(books);
+      saveToLocalStorage(books);
+      setConnectionStatus('connected');
+      return { 
+        success: true, 
+        message: `Successfully downloaded and merged ${books.length} books from the Live Spring Boot server!` 
+      };
+    } catch (err) {
+      setConnectionStatus('error');
+      return { success: false, message: `Download failed: ${(err as Error).message}` };
+    }
+  };
+
+  const handleTestConnectionManual = async (urlToTest: string) => {
+    setConnectionStatus('connecting');
+    const isOk = await testConnection(urlToTest);
+    if (isOk) {
+      setConnectionStatus('connected');
+      return true;
+    } else {
+      setConnectionStatus('error');
+      return false;
+    }
+  };
+
   // Select a book to view details
   const handleSelectBook = (id: string) => {
     setSelectedBookId(id);
@@ -253,23 +383,21 @@ export default function App() {
   };
 
   // Add/Update a book in personal bookshelf
-  const handleSaveBook = (googleBook: GoogleBookItem, readingStatus: ReadingStatus, extra: Partial<SavedBook> = {}) => {
-    const existingIndex = savedBooks.findIndex((b) => b.id === googleBook.id);
-    const updatedBooks = [...savedBooks];
+  const handleSaveBook = async (googleBook: GoogleBookItem, readingStatus: ReadingStatus, extra: Partial<SavedBook> = {}) => {
+    const existingBook = savedBooks.find((b) => b.id === googleBook.id);
+    let bookToSave: SavedBook;
 
-    if (existingIndex > -1) {
-      // Update existing saved book fields
-      updatedBooks[existingIndex] = {
-        ...updatedBooks[existingIndex],
+    if (existingBook) {
+      bookToSave = {
+        ...existingBook,
         readingStatus,
-        currentPage: extra.currentPage !== undefined ? extra.currentPage : updatedBooks[existingIndex].currentPage,
-        rating: extra.rating !== undefined ? extra.rating : updatedBooks[existingIndex].rating,
-        review: extra.review !== undefined ? extra.review : updatedBooks[existingIndex].review,
+        currentPage: extra.currentPage !== undefined ? extra.currentPage : existingBook.currentPage,
+        rating: extra.rating !== undefined ? extra.rating : existingBook.rating,
+        review: extra.review !== undefined ? extra.review : existingBook.review,
         dateUpdated: new Date().toISOString(),
       };
     } else {
-      // Save new book to bookshelf
-      const newBook: SavedBook = {
+      bookToSave = {
         id: googleBook.id,
         title: googleBook.volumeInfo.title,
         authors: googleBook.volumeInfo.authors || ['Unknown Author'],
@@ -286,16 +414,47 @@ export default function App() {
         dateAdded: new Date().toISOString(),
         dateUpdated: new Date().toISOString(),
       };
-      updatedBooks.push(newBook);
     }
 
-    saveToLocalStorage(updatedBooks);
+    if (backendMode === 'spring' && connectionStatus === 'connected') {
+      try {
+        const savedBook = await saveBookToBackend(backendUrl, bookToSave);
+        const updatedBooks = existingBook
+          ? savedBooks.map((b) => (b.id === googleBook.id ? savedBook : b))
+          : [...savedBooks, savedBook];
+        saveToLocalStorage(updatedBooks);
+      } catch (err) {
+        console.error("Failed to save to Spring Boot backend, saving locally:", err);
+        const updatedBooks = existingBook
+          ? savedBooks.map((b) => (b.id === googleBook.id ? bookToSave : b))
+          : [...savedBooks, bookToSave];
+        saveToLocalStorage(updatedBooks);
+      }
+    } else {
+      const updatedBooks = existingBook
+        ? savedBooks.map((b) => (b.id === googleBook.id ? bookToSave : b))
+        : [...savedBooks, bookToSave];
+      saveToLocalStorage(updatedBooks);
+    }
   };
 
   // Remove a book from bookshelf
-  const handleRemoveBook = (id: string) => {
+  const handleRemoveBook = async (id: string) => {
+    const bookToRemove = savedBooks.find((b) => b.id === id);
     const updatedBooks = savedBooks.filter((b) => b.id !== id);
-    saveToLocalStorage(updatedBooks);
+
+    if (backendMode === 'spring' && connectionStatus === 'connected' && bookToRemove?.dbId !== undefined) {
+      try {
+        await deleteBook(backendUrl, bookToRemove.dbId);
+        saveToLocalStorage(updatedBooks);
+      } catch (err) {
+        console.error("Failed to delete from Spring Boot backend, removing locally:", err);
+        saveToLocalStorage(updatedBooks);
+      }
+    } else {
+      saveToLocalStorage(updatedBooks);
+    }
+
     // If the currently viewed book details is removed, transition back
     if (selectedBookId === id) {
       setSelectedBookId(null);
@@ -303,18 +462,37 @@ export default function App() {
   };
 
   // Quick state toggling from bookshelf list
-  const handleUpdateStatus = (id: string, readingStatus: ReadingStatus) => {
-    const updatedBooks = savedBooks.map((b) => {
-      if (b.id === id) {
-        return {
-          ...b,
-          readingStatus,
-          dateUpdated: new Date().toISOString(),
-        };
+  const handleUpdateStatus = async (id: string, readingStatus: ReadingStatus) => {
+    const bookToUpdate = savedBooks.find((b) => b.id === id);
+    if (!bookToUpdate) return;
+
+    const updatedBookLocally = {
+      ...bookToUpdate,
+      readingStatus,
+      dateUpdated: new Date().toISOString(),
+    };
+
+    if (backendMode === 'spring' && connectionStatus === 'connected' && bookToUpdate.dbId !== undefined) {
+      try {
+        const updated = await updateBookProgress(
+          backendUrl,
+          bookToUpdate.dbId,
+          bookToUpdate.currentPage,
+          bookToUpdate.review,
+          bookToUpdate.rating,
+          readingStatus
+        );
+        const updatedBooks = savedBooks.map((b) => (b.id === id ? updated : b));
+        saveToLocalStorage(updatedBooks);
+      } catch (err) {
+        console.error("Failed to update status on Spring Boot backend:", err);
+        const updatedBooks = savedBooks.map((b) => (b.id === id ? updatedBookLocally : b));
+        saveToLocalStorage(updatedBooks);
       }
-      return b;
-    });
-    saveToLocalStorage(updatedBooks);
+    } else {
+      const updatedBooks = savedBooks.map((b) => (b.id === id ? updatedBookLocally : b));
+      saveToLocalStorage(updatedBooks);
+    }
   };
 
   // Quick adding matching from AI Recommendation suggestions
@@ -416,6 +594,14 @@ export default function App() {
             onClearLibrary={handleClearLibrary}
             onResetLibrary={handleResetLibrary}
             onImportLibrary={handleImportLibrary}
+            backendMode={backendMode}
+            setBackendMode={setBackendMode}
+            backendUrl={backendUrl}
+            setBackendUrl={setBackendUrl}
+            connectionStatus={connectionStatus}
+            onSyncLocalToBackend={handleSyncLocalToBackend}
+            onSyncBackendToLocal={handleSyncBackendToLocal}
+            onTestConnection={handleTestConnectionManual}
           />
         );
       case 'about':
@@ -453,6 +639,8 @@ export default function App() {
         onToggleDark={toggleDarkMode}
         profile={profile}
         isLoggedIn={isLoggedIn}
+        backendMode={backendMode}
+        connectionStatus={connectionStatus}
       />
 
       {/* Main Container */}
@@ -464,17 +652,6 @@ export default function App() {
       <footer className="bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 py-6 mt-12 text-center text-xs text-gray-400 dark:text-gray-500 transition-colors duration-300">
         <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-4">
           <p>&copy; {new Date().getFullYear()} Bookverse. Built as a high-fidelity REST Architecture Prototype.</p>
-          <div className="flex space-x-4">
-            <button 
-              onClick={() => {
-                setSelectedBookId(null);
-                setActiveTab('javahub');
-              }}
-              className="hover:text-amber-600 transition-colors cursor-pointer text-3xs font-mono font-bold"
-            >
-              SPRING BOOT INTEGRATION
-            </button>
-          </div>
         </div>
       </footer>
     </div>

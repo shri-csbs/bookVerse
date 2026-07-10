@@ -14,6 +14,8 @@ interface NavigationProps {
   onToggleDark: () => void;
   profile: UserProfile;
   isLoggedIn: boolean;
+  backendMode: 'local' | 'spring';
+  connectionStatus: 'connected' | 'error' | 'connecting' | 'idle';
 }
 
 export default function Navigation({ 
@@ -24,7 +26,9 @@ export default function Navigation({
   isDark,
   onToggleDark,
   profile,
-  isLoggedIn
+  isLoggedIn,
+  backendMode,
+  connectionStatus
 }: NavigationProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -36,10 +40,7 @@ export default function Navigation({
     { id: 'recommendations', label: 'AI Recommendations', icon: Sparkles },
     { id: 'focus', label: 'Ambient Focus', icon: Clock },
     { id: 'products', label: 'Bookish Shop', icon: ShoppingBag },
-    { id: 'profile', label: 'User Profile', icon: User },
-    { id: 'about', label: 'About', icon: Info },
     { id: 'contact', label: 'Contact', icon: Mail },
-    { id: 'javahub', label: 'Java Hub', icon: Terminal, highlight: true },
   ];
 
   const handleTabClick = (id: string) => {
@@ -78,28 +79,20 @@ export default function Navigation({
                   onClick={() => handleTabClick(item.id)}
                   className={`relative flex items-center px-3 py-2 rounded-xl text-xs font-semibold tracking-tight transition-all cursor-pointer ${
                     isActive
-                      ? item.highlight
-                        ? 'bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400'
-                        : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400'
                       : 'text-gray-500 dark:text-gray-400 hover:text-gray-950 dark:hover:text-white hover:bg-gray-50/50 dark:hover:bg-slate-800/40'
                   }`}
                   id={`nav-tab-${item.id}`}
                 >
                   <Icon className={`mr-1.5 h-3.5 w-3.5 ${
                     isActive 
-                      ? item.highlight ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400' 
+                      ? 'text-emerald-600 dark:text-emerald-400' 
                       : 'text-gray-400 dark:text-gray-500 group-hover:text-gray-600'
                   }`} />
                   <span>{item.label}</span>
                   {item.badge !== undefined && (
                     <span className="ml-1.5 px-1.5 py-0.5 text-3xs font-extrabold bg-emerald-600 dark:bg-emerald-500 text-white rounded-full leading-none">
                       {item.badge}
-                    </span>
-                  )}
-                  {item.highlight && !isActive && (
-                    <span className="absolute top-1 right-2 flex h-1.5 w-1.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-amber-500"></span>
                     </span>
                   )}
                 </button>
@@ -121,34 +114,6 @@ export default function Navigation({
                 <Sun className="h-5 w-5 text-amber-400" />
               ) : (
                 <Moon className="h-5 w-5 text-indigo-600" />
-              )}
-            </button>
-
-            {/* Profile widget */}
-            <button 
-              onClick={() => handleTabClick('profile')}
-              className="flex items-center space-x-2 border border-gray-100 dark:border-slate-800 rounded-2xl p-1.5 hover:border-gray-200 dark:hover:border-slate-700 transition-colors bg-gray-50/50 dark:bg-slate-800/50"
-            >
-              {isLoggedIn ? (
-                <>
-                  <img 
-                    src={profile.avatar} 
-                    alt="Profile Avatar" 
-                    className="h-6.5 w-6.5 rounded-lg object-cover ring-2 ring-emerald-500/10 shrink-0"
-                  />
-                  <span className="hidden xl:inline text-2xs font-bold text-gray-700 dark:text-gray-300 pr-1">
-                    {profile.name.split(' ')[0]}
-                  </span>
-                </>
-              ) : (
-                <>
-                  <div className="h-6.5 w-6.5 rounded-lg bg-gray-200 dark:bg-slate-700 flex items-center justify-center shrink-0">
-                    <User className="h-3.5 w-3.5 text-gray-400 dark:text-gray-300" />
-                  </div>
-                  <span className="hidden xl:inline text-2xs font-bold text-gray-500 dark:text-gray-400 pr-1">
-                    Guest Sign In
-                  </span>
-                </>
               )}
             </button>
 
@@ -177,16 +142,14 @@ export default function Navigation({
                 onClick={() => handleTabClick(item.id)}
                 className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
                   isActive
-                    ? item.highlight
-                      ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400'
-                      : 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400'
                     : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-slate-800/40'
                 }`}
               >
                 <div className="flex items-center space-x-2">
                   <Icon className={`h-4 w-4 ${
                     isActive 
-                      ? item.highlight ? 'text-amber-600 dark:text-amber-400' : 'text-emerald-600 dark:text-emerald-400'
+                      ? 'text-emerald-600 dark:text-emerald-400'
                       : 'text-gray-400'
                   }`} />
                   <span>{item.label}</span>

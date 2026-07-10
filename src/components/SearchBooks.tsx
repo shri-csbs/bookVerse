@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Loader2, Sparkles, BookOpen, Star, User, Calendar, Check, Plus, AlertCircle } from 'lucide-react';
 import { GoogleBookItem, SavedBook, ReadingStatus } from '../types';
 
@@ -23,18 +23,54 @@ export default function SearchBooks({ onSelectBook, savedBooks, onSaveBook, onRe
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<GoogleBookItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const lastSearchedQuery = useRef('');
 
-  // Default search on load
-  useEffect(() => {
-    handleSearch('bestsellers');
-  }, []);
+  // AI Insights states
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
+  const [aiInsights, setAiInsights] = useState<{
+    topicSummary: string;
+    recommendedBooks: any[];
+    isSandbox?: boolean;
+  } | null>(null);
+  const [lastAiQuery, setLastAiQuery] = useState('');
 
-  const handleSearch = async (searchQuery: string) => {
-    if (!searchQuery.trim()) return;
+  const handleFetchAiInsights = async (targetQuery: string) => {
+    const trimmed = targetQuery.trim() || 'bestsellers';
+    setAiLoading(true);
+    setAiError(null);
+    try {
+      const response = await fetch('/api/books/search-insights', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: trimmed })
+      });
+      if (!response.ok) {
+        throw new Error('Failed to retrieve AI recommendations. Please try again.');
+      }
+      const data = await response.json();
+      setAiInsights(data);
+      setLastAiQuery(trimmed);
+    } catch (err: any) {
+      console.error(err);
+      setAiError(err.message || 'An error occurred while communicating with the AI server.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const handleSearch = useCallback(async (searchQuery: string, searchKeyForRef?: string) => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) return;
+    
+    const refKey = (searchKeyForRef || trimmed).trim();
+    if (lastSearchedQuery.current === refKey) return;
+    
+    lastSearchedQuery.current = refKey;
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/books/search?q=${encodeURIComponent(searchQuery)}`);
+      const response = await fetch(`/api/books/search?q=${encodeURIComponent(trimmed)}`);
       if (!response.ok) {
         throw new Error('Could not retrieve books. Please try a different term.');
       }
@@ -47,11 +83,25 @@ export default function SearchBooks({ onSelectBook, savedBooks, onSaveBook, onRe
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'An error occurred while connecting to Google Books.');
+      setError(err.message || 'An error occurred while connecting to the Open Library API.');
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  // Real-time search as user types with debounce
+  useEffect(() => {
+    if (!query.trim()) {
+      handleSearch('bestsellers');
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      handleSearch(query);
+    }, 450); // 450ms debounce
+
+    return () => clearTimeout(timer);
+  }, [query, handleSearch]);
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,6 +112,9 @@ export default function SearchBooks({ onSelectBook, savedBooks, onSaveBook, onRe
     const book = savedBooks.find((b) => b.id === googleId);
     return book ? book.readingStatus : 'NOT_SAVED';
   };
+
+  const activeQuery = query.trim() || 'bestsellers';
+  const showAiPrompt = !aiLoading && (!aiInsights || lastAiQuery.toLowerCase() !== activeQuery.toLowerCase());
 
   return (
     <div className="space-y-8 animate-fade-in" id="search-section">
@@ -74,7 +127,7 @@ export default function SearchBooks({ onSelectBook, savedBooks, onSaveBook, onRe
           </span>
         </h1>
         <p className="text-lg text-gray-500 max-w-xl mx-auto">
-          Search millions of volumes from the Google Books global library database and manage your reading flow seamlessly.
+          Search millions of volumes from the Open Library global catalog database and manage your reading flow seamlessly.
         </p>
       </div>
 
@@ -110,7 +163,7 @@ export default function SearchBooks({ onSelectBook, savedBooks, onSaveBook, onRe
               key={p.id}
               onClick={() => {
                 setQuery(p.label);
-                handleSearch(p.id);
+                handleSearch(p.id, p.label);
               }}
               type="button"
               className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-medium bg-gray-50 border border-gray-100 hover:border-gray-200 hover:bg-gray-100 text-gray-600 transition-colors cursor-pointer"
@@ -132,6 +185,173 @@ export default function SearchBooks({ onSelectBook, savedBooks, onSaveBook, onRe
           </div>
         </div>
       )}
+
+      {/* AI Search Companion and Recommendation Panel */}
+      <div className="max-w-4xl mx-auto space-y-4" id="ai-search-companion">
+        {showAiPrompt && (
+          <button
+            onClick={() => handleFetchAiInsights(activeQuery)}
+            className="w-full text-left p-5 bg-linear-to-r from-emerald-500/10 via-teal-500/5 to-transparent border border-emerald-500/20 rounded-2xl flex items-center justify-between group hover:border-emerald-500/40 hover:from-emerald-500/15 transition-all shadow-xs duration-300 cursor-pointer"
+            id="trigger-ai-insights-btn"
+          >
+            <div className="flex items-center space-x-4">
+              <div className="p-3 bg-emerald-500/20 text-emerald-700 rounded-xl animate-pulse">
+                <Sparkles className="h-5 w-5" />
+              </div>
+              <div>
+                <h4 className="font-bold text-gray-900 text-sm flex items-center gap-1.5">
+                  Generate AI Search Insights & Curated Picks
+                  <span className="px-2 py-0.5 text-3xs font-medium bg-emerald-100 text-emerald-800 rounded-full">Gemini 3.5</span>
+                </h4>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Ask Bookverse AI to map the intellectual history of <span className="font-semibold text-emerald-600">"{activeQuery}"</span> and recommend 3 premier matching reads.
+                </p>
+              </div>
+            </div>
+            <span className="text-xs font-semibold text-emerald-600 group-hover:translate-x-1 transition-transform flex items-center gap-1">
+              Analyze Topic &rarr;
+            </span>
+          </button>
+        )}
+
+        {aiLoading && (
+          <div className="p-8 bg-gray-50 border border-gray-100 rounded-2xl flex flex-col items-center justify-center space-y-3">
+            <Loader2 className="h-8 w-8 text-emerald-600 animate-spin" />
+            <div className="text-center space-y-1">
+              <p className="text-sm font-semibold text-gray-700">Bookverse AI is scanning the catalog...</p>
+              <p className="text-xs text-gray-400">Synthesizing thematic insights and high-quality recommendations on "{activeQuery}"</p>
+            </div>
+          </div>
+        )}
+
+        {aiError && (
+          <div className="p-4 bg-red-50 border border-red-100 rounded-2xl flex items-start space-x-3 text-red-800">
+            <AlertCircle className="h-5 w-5 text-red-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-sm">AI Exploration Notice</p>
+              <p className="text-xs text-red-700 mt-0.5">{aiError}</p>
+            </div>
+          </div>
+        )}
+
+        {aiInsights && lastAiQuery.toLowerCase() === activeQuery.toLowerCase() && !aiLoading && (
+          <div className="p-6 bg-linear-to-b from-emerald-50/40 via-teal-50/20 to-white border border-emerald-100 rounded-2xl shadow-xs space-y-6 relative overflow-hidden animate-fade-in">
+            {/* Ambient Sparkle Graphics */}
+            <div className="absolute top-3 right-3 text-emerald-500/20">
+              <Sparkles className="h-16 w-16" />
+            </div>
+
+            {/* AI Summary Section */}
+            <div className="space-y-2 relative z-10">
+              <div className="flex items-center justify-between">
+                <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-100 text-emerald-800 gap-1.5">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Gemini Topic Companion
+                </span>
+                <button 
+                  onClick={() => setAiInsights(null)}
+                  className="text-2xs font-semibold text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
+                  title="Close AI Panel"
+                >
+                  Dismiss
+                </button>
+              </div>
+              <h3 className="text-xl font-extrabold text-gray-900 tracking-tight">
+                Exploring <span className="text-emerald-700 font-black">"{lastAiQuery}"</span>
+              </h3>
+              <p className="text-sm text-gray-600 leading-relaxed max-w-3xl">
+                {aiInsights.topicSummary}
+              </p>
+            </div>
+
+            {/* Curated Recommendations List */}
+            <div className="space-y-4">
+              <h4 className="text-xs font-bold text-gray-400 tracking-wider uppercase">
+                AI Curated Premier Picks:
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {aiInsights.recommendedBooks.map((book: any, idx: number) => {
+                  const status = getBookStatus(book.id);
+                  const coverUrl = book.volumeInfo.imageLinks?.thumbnail || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?q=80&w=300';
+                  const authors = book.volumeInfo.authors?.join(', ') || 'Unknown Author';
+
+                  return (
+                    <div 
+                      key={book.id || idx}
+                      className="bg-white border border-emerald-100 hover:border-emerald-200 rounded-xl p-4 flex flex-col justify-between shadow-xs hover:shadow-md transition-all duration-300"
+                    >
+                      <div className="space-y-3">
+                        {/* Book artwork & core header */}
+                        <div className="flex items-start space-x-3">
+                          <img 
+                            src={coverUrl}
+                            alt={book.volumeInfo.title}
+                            referrerPolicy="no-referrer"
+                            className="h-20 w-14 object-cover shadow-sm rounded-md shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <h5 
+                              onClick={() => onSelectBook(book.id)}
+                              className="font-bold text-gray-900 text-xs line-clamp-1 hover:text-emerald-600 cursor-pointer"
+                            >
+                              {book.volumeInfo.title}
+                            </h5>
+                            <p className="text-3xs text-gray-500 truncate mt-0.5">by {authors}</p>
+                            <span className="inline-block mt-1 px-1.5 py-0.5 text-4xs font-semibold bg-emerald-50 text-emerald-700 rounded-sm">
+                              {book.volumeInfo.categories?.[0] || 'Literature'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Why Recommended Reason */}
+                        <div className="p-2.5 bg-emerald-500/5 rounded-lg border border-emerald-500/10 text-3xs text-emerald-800 leading-relaxed">
+                          <span className="font-bold">✨ AI Insight: </span>
+                          {book.recReason}
+                        </div>
+                      </div>
+
+                      {/* Footer actions for recommended book */}
+                      <div className="pt-3 border-t border-gray-50 flex items-center justify-between mt-3 text-3xs">
+                        <button
+                          onClick={() => onSelectBook(book.id)}
+                          className="font-bold text-emerald-600 hover:text-emerald-700 flex items-center space-x-0.5 cursor-pointer"
+                        >
+                          <BookOpen className="h-3 w-3" />
+                          <span>View Details</span>
+                        </button>
+
+                        <div className="flex items-center space-x-1">
+                          {status === 'NOT_SAVED' ? (
+                            <>
+                              <button
+                                onClick={() => onSaveBook(book, 'WISHLIST')}
+                                className="p-1 text-gray-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-md border border-gray-100 cursor-pointer"
+                                title="Add to Wishlist"
+                              >
+                                <Plus className="h-3 w-3" />
+                              </button>
+                              <button
+                                onClick={() => onSaveBook(book, 'READING')}
+                                className="px-2 py-1 font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-md cursor-pointer"
+                              >
+                                Save
+                              </button>
+                            </>
+                          ) : (
+                            <span className="px-1.5 py-0.5 bg-gray-100 text-gray-600 rounded-sm font-semibold">
+                              Saved
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* Books Deck/Grid Result Display */}
       {loading ? (

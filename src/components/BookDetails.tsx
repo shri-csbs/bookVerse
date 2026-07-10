@@ -183,11 +183,11 @@ export default function BookDetails({ bookId, onBack, savedBooks, onSaveBook, on
               <p className="text-sm font-medium text-gray-600 mt-1">by {authorsList.join(', ')}</p>
             </div>
 
-            {/* Google Rating */}
+            {/* Open Library Rating */}
             {volumeInfo.averageRating && (
               <div className="mt-4 flex items-center space-x-1 px-3 py-1 bg-amber-50 rounded-lg text-xs font-bold text-amber-800 border border-amber-100">
                 <Star className="h-4 w-4 text-amber-500 fill-amber-500" />
-                <span>Google Books Rating: {volumeInfo.averageRating}/5</span>
+                <span>Open Library Rating: {volumeInfo.averageRating}/5</span>
                 <span className="text-amber-600 font-normal ml-0.5">({volumeInfo.ratingsCount} reviews)</span>
               </div>
             )}
